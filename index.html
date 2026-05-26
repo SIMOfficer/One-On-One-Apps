@@ -399,15 +399,24 @@ tr.clickable:hover{background:#F9FAFB;cursor:pointer;}
       <div class="view-header"><h1>Kelola Pengguna</h1><p>Manajemen akun pengguna aplikasi</p></div>
       <div class="grid-2">
         <div class="card">
-          <div class="card-title">Tambah Pengguna Baru</div>
-          <div class="form-row"><div class="form-group"><label class="form-label">Username *</label><input id="usr-uname" class="form-input" placeholder="username"></div><div class="form-group"><label class="form-label">Password *</label><input id="usr-pass" class="form-input" placeholder="password"></div></div>
+          <div class="flex-between" style="margin-bottom:14px;">
+            <div class="card-title" id="usr-form-title" style="margin-bottom:0;">Tambah Pengguna Baru</div>
+            <button id="usr-cancel-edit" class="btn btn-secondary btn-sm" onclick="cancelEditUser()" style="display:none;">✕ Batal Edit</button>
+          </div>
+          <div id="usr-edit-banner" style="display:none;background:#FEF3C7;border:1px solid #FDE68A;border-radius:6px;padding:8px 12px;font-size:12px;color:#92400E;margin-bottom:14px;">
+            ✏️ Mode Edit — mengubah data pengguna yang sudah ada
+          </div>
+          <div class="form-row"><div class="form-group"><label class="form-label">Username *</label><input id="usr-uname" class="form-input" placeholder="username"></div><div class="form-group"><label class="form-label">Password <span id="usr-pass-hint" style="font-weight:400;color:var(--gray-l);">(kosongkan jika tidak diubah)</span></label><input id="usr-pass" class="form-input" placeholder="password"></div></div>
           <div class="form-group"><label class="form-label">Nama Lengkap *</label><input id="usr-name" class="form-input" placeholder="Nama Karyawan"></div>
           <div class="form-row"><div class="form-group"><label class="form-label">Role</label><select id="usr-role" class="form-select"><option value="employee">Karyawan</option><option value="crc">CRC</option><option value="kacab">Kepala Cabang</option><option value="kabeng">Kepala Bengkel</option><option value="adh">Administration Head</option></select></div><div class="form-group"><label class="form-label">Departemen</label><input id="usr-dept" class="form-input" placeholder="Dept"></div></div>
           <div class="form-group"><label class="form-label">Posisi/Jabatan</label><input id="usr-pos" class="form-input" placeholder="Posisi"></div>
-          <button class="btn btn-primary" onclick="addUser()" style="width:100%;">+ Tambah Pengguna</button>
+          <button class="btn btn-primary" id="usr-submit-btn" onclick="submitUser()" style="width:100%;">+ Tambah Pengguna</button>
         </div>
         <div class="card">
-          <div class="card-title">Daftar Pengguna</div>
+          <div class="flex-between" style="margin-bottom:14px;">
+            <div class="card-title" style="margin-bottom:0;">Daftar Pengguna</div>
+            <div class="search-wrap"><input class="search-box" id="usr-search" placeholder="Cari nama..." oninput="renderUsers()" style="width:160px;padding-left:30px;"></div>
+          </div>
           <div id="user-list-table"></div>
         </div>
       </div>
@@ -431,6 +440,7 @@ let S = {
   view: 'dashboard', selIv: null, selSc: null,
   formStep: 0, formAnswers: {}, formSchedule: null,
   loading: false, syncing: false, lastSync: null,
+  editingUserId: null,
   charts: {},
 };
 
@@ -1052,14 +1062,145 @@ async function addSchedule() {
 // ── USER MANAGER ───────────────────────────────────────────
 function renderUsers() {
   renderSidebar();
+  const search = (document.getElementById('usr-search')||{value:''}).value.toLowerCase();
+  const filtered = S.users.filter(u =>
+    u.name.toLowerCase().includes(search) ||
+    u.username.toLowerCase().includes(search) ||
+    (u.dept||'').toLowerCase().includes(search)
+  );
+
   document.getElementById('user-list-table').innerHTML = `
-    <table><thead><tr><th>Username</th><th>Nama</th><th>Role</th><th>Dept</th></tr></thead>
-    <tbody>${S.users.map(u=>`<tr>
-      <td style="font-family:monospace;font-size:12px;color:var(--gray)">${u.username}</td>
-      <td style="font-weight:600">${u.name}</td>
-      <td><span class="badge-status" style="background:${u.role==='employee'?'#EFF6FF':'#FEF3C7'};color:${u.role==='employee'?'#1D4ED8':'#92400E'}">${ROLE_LABEL[u.role]||u.role}</span></td>
-      <td style="color:var(--gray)">${u.dept}</td>
-    </tr>`).join('')}</tbody></table>`;
+    <table style="width:100%;border-collapse:collapse;">
+      <thead><tr>
+        <th style="padding:9px 10px;text-align:left;font-size:11px;color:var(--gray);font-weight:700;border-bottom:2px solid var(--border);">Nama</th>
+        <th style="padding:9px 10px;text-align:left;font-size:11px;color:var(--gray);font-weight:700;border-bottom:2px solid var(--border);">Role</th>
+        <th style="padding:9px 10px;text-align:left;font-size:11px;color:var(--gray);font-weight:700;border-bottom:2px solid var(--border);">Dept</th>
+        <th style="padding:9px 10px;text-align:left;font-size:11px;color:var(--gray);font-weight:700;border-bottom:2px solid var(--border);">Aksi</th>
+      </tr></thead>
+      <tbody>${filtered.map(u=>`
+        <tr style="border-bottom:1px solid #F9FAFB;${S.editingUserId===u.id?'background:#FFFBEB;':''}" id="usr-row-${u.id}">
+          <td style="padding:9px 10px;">
+            <div style="font-size:13px;font-weight:600;color:var(--txt);">${u.name}</div>
+            <div style="font-size:11px;color:var(--gray-l);font-family:monospace;">${u.username}</div>
+          </td>
+          <td style="padding:9px 10px;">
+            <span class="badge-status" style="background:${u.role==='employee'?'#EFF6FF':'#FEF3C7'};color:${u.role==='employee'?'#1D4ED8':'#92400E'}">
+              ${ROLE_LABEL[u.role]||u.role}
+            </span>
+          </td>
+          <td style="padding:9px 10px;font-size:12px;color:var(--gray);">${u.dept||'-'}</td>
+          <td style="padding:9px 10px;">
+            <div style="display:flex;gap:5px;">
+              <button class="btn btn-secondary btn-sm" onclick="editUser('${u.id}')" title="Edit">✏️</button>
+              ${u.id !== S.user.id ?
+                `<button class="btn btn-sm" onclick="deleteUser('${u.id}','${u.name}')"
+                  style="background:#FEF2F2;color:#DC2626;border:1.5px solid #FECACA;" title="Hapus">🗑️</button>` :
+                `<span style="font-size:10px;color:var(--gray-l);padding:2px 6px;">(Anda)</span>`
+              }
+            </div>
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    <div style="font-size:11px;color:var(--gray-l);padding:8px 4px;text-align:right;">${filtered.length} pengguna</div>`;
+}
+
+function editUser(userId) {
+  const u = S.users.find(x => x.id === userId);
+  if (!u) return;
+  S.editingUserId = userId;
+
+  // Fill form
+  document.getElementById('usr-uname').value = u.username;
+  document.getElementById('usr-pass').value  = '';  // blank = keep existing
+  document.getElementById('usr-name').value  = u.name;
+  document.getElementById('usr-role').value  = u.role;
+  document.getElementById('usr-dept').value  = u.dept || '';
+  document.getElementById('usr-pos').value   = u.pos  || '';
+
+  // Toggle UI to edit mode
+  document.getElementById('usr-form-title').textContent  = '✏️ Edit Pengguna';
+  document.getElementById('usr-submit-btn').textContent  = '💾 Simpan Perubahan';
+  document.getElementById('usr-submit-btn').className    = 'btn btn-success';
+  document.getElementById('usr-cancel-edit').style.display = '';
+  document.getElementById('usr-edit-banner').style.display = '';
+  document.getElementById('usr-pass-hint').style.display  = '';
+
+  // Scroll form into view & highlight row
+  document.getElementById('usr-uname').scrollIntoView({ behavior:'smooth', block:'center' });
+  renderUsers();
+  toast('Silakan ubah data lalu klik Simpan Perubahan', 'warn');
+}
+
+function cancelEditUser() {
+  S.editingUserId = null;
+  clearUserForm();
+  renderUsers();
+}
+
+function clearUserForm() {
+  ['usr-uname','usr-pass','usr-name','usr-dept','usr-pos'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  document.getElementById('usr-form-title').textContent    = 'Tambah Pengguna Baru';
+  document.getElementById('usr-submit-btn').textContent    = '+ Tambah Pengguna';
+  document.getElementById('usr-submit-btn').className      = 'btn btn-primary';
+  document.getElementById('usr-cancel-edit').style.display = 'none';
+  document.getElementById('usr-edit-banner').style.display = 'none';
+  document.getElementById('usr-role').value = 'employee';
+}
+
+async function submitUser() {
+  if (S.editingUserId) {
+    await updateUser();
+  } else {
+    await addUser();
+  }
+}
+
+async function updateUser() {
+  const un = document.getElementById('usr-uname').value.trim();
+  const pw = document.getElementById('usr-pass').value.trim();
+  const nm = document.getElementById('usr-name').value.trim();
+  const rl = document.getElementById('usr-role').value;
+  const dt = document.getElementById('usr-dept').value.trim();
+  const ps = document.getElementById('usr-pos').value.trim();
+  if (!un || !nm) { toast('Username dan Nama tidak boleh kosong!', 'warn'); return; }
+
+  const existing = S.users.find(u => u.id === S.editingUserId);
+  if (!existing) return;
+
+  // Check username conflict (allow keeping same username)
+  const conflict = S.users.find(u => u.username === un && u.id !== S.editingUserId);
+  if (conflict) { toast('Username sudah dipakai pengguna lain!', 'err'); return; }
+
+  const btn = document.getElementById('usr-submit-btn');
+  btn.innerHTML = '<span class="spinner"></span> Menyimpan...';
+  btn.disabled = true;
+
+  try {
+    const updated = {
+      ...existing,
+      username: un,
+      password: pw || existing.password, // keep old password if blank
+      name: nm,
+      role: rl,
+      dept: dt,
+      pos:  ps,
+    };
+    const r = await apiPost({ action: 'updateUser', payload: updated });
+    if (!r.success) throw new Error(r.error);
+    await loadAllData();
+    S.editingUserId = null;
+    clearUserForm();
+    renderUsers();
+    toast('Data pengguna berhasil diperbarui!', 'ok');
+  } catch(e) {
+    toast('Gagal: ' + e.message, 'err');
+  }
+  btn.innerHTML = '💾 Simpan Perubahan';
+  btn.disabled = false;
 }
 
 async function addUser() {
@@ -1069,18 +1210,34 @@ async function addUser() {
   const rl = document.getElementById('usr-role').value;
   const dt = document.getElementById('usr-dept').value.trim();
   const ps = document.getElementById('usr-pos').value.trim();
-  if(!un||!pw||!nm) { toast('Lengkapi data!','warn'); return; }
-  if(S.users.find(u=>u.username===un)) { toast('Username sudah ada!','err'); return; }
-  
+  if (!un || !pw || !nm) { toast('Lengkapi data!', 'warn'); return; }
+  if (S.users.find(u => u.username === un)) { toast('Username sudah ada!', 'err'); return; }
+
+  const btn = document.getElementById('usr-submit-btn');
+  btn.innerHTML = '<span class="spinner"></span> Menyimpan...';
+  btn.disabled = true;
   try {
     const user = { id:'u'+uid(), username:un, password:pw, name:nm, role:rl, dept:dt, pos:ps, createdAt:new Date().toISOString() };
     const r = await apiPost({ action:'addUser', payload:user });
-    if(!r.success) throw new Error(r.error);
+    if (!r.success) throw new Error(r.error);
+    await loadAllData();
+    clearUserForm();
+    renderUsers();
+    toast('Pengguna berhasil ditambahkan!', 'ok');
+  } catch(e) { toast('Gagal: ' + e.message, 'err'); }
+  btn.innerHTML = '+ Tambah Pengguna';
+  btn.disabled = false;
+}
+
+async function deleteUser(userId, userName) {
+  if (!confirm(`Hapus pengguna "${userName}"?\n\nTindakan ini tidak dapat dibatalkan.`)) return;
+  try {
+    const r = await apiPost({ action:'deleteUser', payload:{ id: userId } });
+    if (!r.success) throw new Error(r.error);
     await loadAllData();
     renderUsers();
-    ['usr-uname','usr-pass','usr-name','usr-dept','usr-pos'].forEach(id=>document.getElementById(id).value='');
-    toast('Pengguna berhasil ditambahkan!', 'ok');
-  } catch(e) { toast('Gagal: '+e.message, 'err'); }
+    toast(`Pengguna "${userName}" berhasil dihapus`, 'ok');
+  } catch(e) { toast('Gagal menghapus: ' + e.message, 'err'); }
 }
 
 // ── EXPORT CSV ─────────────────────────────────────────────
