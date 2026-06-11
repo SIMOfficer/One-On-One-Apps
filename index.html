@@ -124,6 +124,21 @@ tr.clickable:hover{background:#F9FAFB;cursor:pointer;}
 .ai-content{font-size:13px;color:#1A1A1A;line-height:1.9;white-space:pre-wrap;}
 .ai-placeholder{background:#F9FAFB;border-radius:var(--r);padding:32px;text-align:center;border:2px dashed var(--border);}
 
+/* ── PDCA ────────────────── */
+.pdca-item{border:1.5px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:10px;}
+.pdca-item:last-child{margin-bottom:0;}
+.pdca-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;}
+.pdca-tag{display:inline-block;border-radius:6px;padding:2px 9px;font-size:11px;font-weight:700;letter-spacing:.5px;color:#fff;}
+.pdca-tag.plan{background:#3B82F6;}
+.pdca-tag.do{background:#F59E0B;}
+.pdca-tag.check{background:#8B5CF6;}
+.pdca-tag.act{background:#10B981;}
+.pdca-desc{font-size:13px;color:var(--txt);line-height:1.6;margin-bottom:8px;}
+.pdca-meta{font-size:11px;color:var(--gray);margin-bottom:10px;}
+.pdca-foot{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;}
+.pdca-status-select{padding:6px 10px;border:1.5px solid var(--border);border-radius:var(--r-sm);font-size:12px;font-family:inherit;outline:none;}
+.pdca-note{flex:1;min-width:160px;padding:6px 10px;border:1.5px solid var(--border);border-radius:var(--r-sm);font-size:12px;font-family:inherit;outline:none;resize:vertical;}
+
 /* ── LOGIN ───────────────── */
 #login-page{min-height:100vh;background:linear-gradient(135deg,#1C1C1C 0%,var(--red) 100%);display:flex;align-items:center;justify-content:center;padding:16px;}
 .login-card{background:#fff;border-radius:16px;padding:38px;width:100%;max-width:400px;box-shadow:0 30px 70px rgba(0,0,0,.4);}
@@ -358,6 +373,7 @@ tr.clickable:hover{background:#F9FAFB;cursor:pointer;}
           </div>
         </div>
       </div>
+      <div id="detail-pdca-section" style="margin-top:16px;"></div>
     </div>
 
     <!-- SCHEDULE MANAGER -->
@@ -377,14 +393,25 @@ tr.clickable:hover{background:#F9FAFB;cursor:pointer;}
             <label class="form-label">Interviewer</label>
             <select id="sc-interviewer" class="form-select"></select>
           </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Tanggal Interview *</label>
+              <input id="sc-date" type="date" class="form-input">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Waktu *</label>
+              <input id="sc-time" type="time" class="form-input" value="09:00">
+            </div>
+          </div>
           <div class="form-group">
-            <label class="form-label">Tanggal Interview *</label>
-            <input id="sc-date" type="date" class="form-input">
+            <label class="form-label">Facilitator</label>
+            <select id="sc-facilitator" class="form-select"></select>
           </div>
           <div class="form-group">
             <label class="form-label">Catatan (opsional)</label>
             <input id="sc-notes" class="form-input" placeholder="Mis: Interview rutin bulan ini">
           </div>
+          <div style="font-size:11px;color:var(--gray-l);margin-bottom:10px;">📅 Undangan Google Calendar &amp; email otomatis dikirim ke karyawan, interviewer, dan facilitator.</div>
           <button class="btn btn-primary" onclick="addSchedule()" style="width:100%;" id="sc-btn">Simpan Jadwal</button>
         </div>
         <div class="card">
@@ -408,6 +435,7 @@ tr.clickable:hover{background:#F9FAFB;cursor:pointer;}
           </div>
           <div class="form-row"><div class="form-group"><label class="form-label">Username *</label><input id="usr-uname" class="form-input" placeholder="username"></div><div class="form-group"><label class="form-label">Password <span id="usr-pass-hint" style="font-weight:400;color:var(--gray-l);">(kosongkan jika tidak diubah)</span></label><input id="usr-pass" class="form-input" placeholder="password"></div></div>
           <div class="form-group"><label class="form-label">Nama Lengkap *</label><input id="usr-name" class="form-input" placeholder="Nama Karyawan"></div>
+          <div class="form-group"><label class="form-label">Email</label><input id="usr-email" type="email" class="form-input" placeholder="nama@dayatoyota.co.id"></div>
           <div class="form-row"><div class="form-group"><label class="form-label">Role</label><select id="usr-role" class="form-select"><option value="employee">Karyawan</option><option value="crc">CRC</option><option value="kacab">Kepala Cabang</option><option value="kabeng">Kepala Bengkel</option><option value="adh">Administration Head</option></select></div><div class="form-group"><label class="form-label">Departemen</label><input id="usr-dept" class="form-input" placeholder="Dept"></div></div>
           <div class="form-group"><label class="form-label">Posisi/Jabatan</label><input id="usr-pos" class="form-input" placeholder="Posisi"></div>
           <button class="btn btn-primary" id="usr-submit-btn" onclick="submitUser()" style="width:100%;">+ Tambah Pengguna</button>
@@ -974,6 +1002,80 @@ function renderDetail() {
     document.getElementById('detail-photo-card').style.display = '';
     document.getElementById('detail-photo').innerHTML = `<a href="${iv.photoUrl}" target="_blank" class="btn btn-secondary btn-sm">🔗 Lihat Dokumentasi</a>`;
   }
+
+  renderPdcaSection(iv);
+}
+
+// ── PDCA ACTION PLAN & REALISASI ────────────────────────────
+const PDCA_TYPES = { Plan:'plan', Do:'do', Check:'check', Act:'act' };
+const PDCA_STATUS = ['Belum', 'Proses', 'Selesai'];
+const PDCA_STATUS_COLOR = { Belum:['#FEF3C7','#92400E'], Proses:['#DBEAFE','#1D4ED8'], Selesai:['#D1FAE5','#065F46'] };
+
+function getPdcaItems(iv) {
+  if (!iv.pdcaItems) return [];
+  try {
+    const items = typeof iv.pdcaItems === 'string' ? JSON.parse(iv.pdcaItems) : iv.pdcaItems;
+    return Array.isArray(items) ? items : [];
+  } catch(e) { return []; }
+}
+
+function canEditPdca(iv) {
+  return S.user && (isFullAccess() || S.user.id === iv.employeeId);
+}
+
+function renderPdcaSection(iv) {
+  const el = document.getElementById('detail-pdca-section');
+  const items = getPdcaItems(iv);
+  if (!items.length) { el.innerHTML = ''; return; }
+
+  const editable = canEditPdca(iv);
+  el.innerHTML = `
+    <div class="card">
+      <div class="card-title">📋 PDCA Action Plan & Realisasi</div>
+      ${items.map(item => {
+        const cls = PDCA_TYPES[item.type] || 'plan';
+        const [bg, fg] = PDCA_STATUS_COLOR[item.status] || PDCA_STATUS_COLOR.Belum;
+        return `
+        <div class="pdca-item">
+          <div class="pdca-head">
+            <span class="pdca-tag ${cls}">${item.type || 'Plan'}</span>
+            <span class="badge-status" style="background:${bg};color:${fg}">${item.status || 'Belum'}</span>
+          </div>
+          <div class="pdca-desc">${item.desc || '-'}</div>
+          <div class="pdca-meta">${item.pic ? `👤 PIC: ${item.pic}` : ''}${item.dueDate ? ` &nbsp; · &nbsp; 🗓️ Target: ${fdate(item.dueDate)}` : ''}</div>
+          ${editable ? `
+          <div class="pdca-foot">
+            <select class="pdca-status-select" id="pdca-status-${item.id}">
+              ${PDCA_STATUS.map(s=>`<option value="${s}" ${item.status===s?'selected':''}>${s}</option>`).join('')}
+            </select>
+            <textarea class="pdca-note" id="pdca-note-${item.id}" rows="1" placeholder="Catatan realisasi...">${item.realisasi||''}</textarea>
+            <button class="btn btn-primary btn-sm" onclick="savePdcaItem('${item.id}')">Simpan</button>
+          </div>` : (item.realisasi ? `<div class="pdca-meta"><strong>Realisasi:</strong> ${item.realisasi}</div>` : '')}
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+async function savePdcaItem(itemId) {
+  const iv = S.interviews.find(x=>x.id===S.selIv);
+  if (!iv) return;
+  const status = document.getElementById('pdca-status-'+itemId).value;
+  const realisasi = document.getElementById('pdca-note-'+itemId).value.trim();
+
+  try {
+    const r = await apiPost({ action:'updatePdcaStatus', payload:{ interviewId: iv.id, itemId, status, realisasi } });
+    if (!r.success) throw new Error(r.error);
+
+    const items = getPdcaItems(iv);
+    const idx = items.findIndex(i=>i.id===itemId);
+    if (idx>=0) { items[idx].status = status; items[idx].realisasi = realisasi; items[idx].updatedAt = new Date().toISOString(); }
+    iv.pdcaItems = JSON.stringify(items);
+
+    toast('Realisasi berhasil disimpan!', 'ok');
+    renderPdcaSection(iv);
+  } catch(e) {
+    toast('Gagal: ' + e.message, 'err');
+  }
 }
 
 async function generateAI() {
@@ -989,9 +1091,9 @@ async function generateAI() {
   try {
     const r = await apiPost({ action:'generateAI', payload });
     if (r.error) throw new Error(r.error);
-    
-    // Update interview with AI summary
-    const updated = { ...iv, aiSummary: r.text };
+
+    // Update interview with AI summary + structured PDCA action plan
+    const updated = { ...iv, aiSummary: r.summary || r.text, pdcaItems: JSON.stringify(r.pdcaItems || []) };
     const r2 = await apiPost({ action:'updateInterview', payload:updated });
     if (!r2.success) throw new Error(r2.error);
     
@@ -1021,7 +1123,13 @@ function renderSchedule() {
   const itrSel = document.getElementById('sc-interviewer');
   itrSel.innerHTML = S.users.filter(u=>['crc','kacab'].includes(u.role)).map(u=>
     `<option value="${u.id}">${u.name} (${ROLE_LABEL[u.role]})</option>`).join('');
-  
+
+  // Fill facilitator dropdown (CRC users), default to current user if CRC
+  const facSel = document.getElementById('sc-facilitator');
+  facSel.innerHTML = S.users.filter(u=>u.role==='crc').map(u=>
+    `<option value="${u.id}">${u.name} (${ROLE_LABEL[u.role]})</option>`).join('');
+  if (S.user && S.user.role==='crc') facSel.value = S.user.id;
+
   // Schedule list
   document.getElementById('sc-list').innerHTML = S.schedules.length===0?
     '<div style="color:var(--gray-l);font-size:13px;text-align:center;padding:20px;">Belum ada jadwal</div>' :
@@ -1030,7 +1138,7 @@ function renderSchedule() {
       return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);">
         <div>
           <div style="font-size:13px;font-weight:600">${emp.name} <span style="color:var(--gray);font-weight:400">(${emp.dept})</span></div>
-          <div style="font-size:11px;color:var(--gray-l);margin-top:2px">📅 ${fdate(sc.date)}</div>
+          <div style="font-size:11px;color:var(--gray-l);margin-top:2px">📅 ${fdate(sc.date)}${sc.time?` · ${sc.time}`:''}${sc.calendarEventId?' · 🗓️ Tersinkron Calendar':''}</div>
         </div>
         <span class="badge-status" style="background:${sc.status==='completed'?'#D1FAE5':'#FEF3C7'};color:${sc.status==='completed'?'#065F46':'#92400E'}">${sc.status==='completed'?'Selesai':'Pending'}</span>
       </div>`;
@@ -1040,15 +1148,17 @@ function renderSchedule() {
 async function addSchedule() {
   const eid = document.getElementById('sc-emp').value;
   const iid = document.getElementById('sc-interviewer').value;
+  const fid = document.getElementById('sc-facilitator').value;
   const date = document.getElementById('sc-date').value;
+  const time = document.getElementById('sc-time').value;
   const notes = document.getElementById('sc-notes').value;
-  if(!eid||!date) { toast('Pilih karyawan dan tanggal!', 'warn'); return; }
-  
+  if(!eid||!date||!time) { toast('Pilih karyawan, tanggal, dan waktu!', 'warn'); return; }
+
   const btn = document.getElementById('sc-btn');
   btn.innerHTML = '<span class="spinner"></span>';
   btn.disabled = true;
   try {
-    const sc = { id:'s'+uid(), employeeId:eid, interviewerId:iid, date, status:'pending', notes, createdAt:new Date().toISOString() };
+    const sc = { id:'s'+uid(), employeeId:eid, interviewerId:iid, facilitatorId:fid, date, time, status:'pending', notes, createdAt:new Date().toISOString() };
     const r = await apiPost({ action:'addSchedule', payload:sc });
     if(!r.success) throw new Error(r.error);
     await loadAllData();
@@ -1056,7 +1166,7 @@ async function addSchedule() {
     document.getElementById('sc-emp').value='';
     document.getElementById('sc-date').value='';
     document.getElementById('sc-notes').value='';
-    toast('Jadwal berhasil disimpan!', 'ok');
+    toast(r.calendarSynced ? 'Jadwal disimpan & undangan calendar terkirim!' : 'Jadwal berhasil disimpan!', r.calendarSynced ? 'ok' : 'warn');
   } catch(e) {
     toast('Gagal: '+e.message, 'err');
   }
@@ -1087,6 +1197,7 @@ function renderUsers() {
           <td style="padding:9px 10px;">
             <div style="font-size:13px;font-weight:600;color:var(--txt);">${u.name}</div>
             <div style="font-size:11px;color:var(--gray-l);font-family:monospace;">${u.username}</div>
+            ${u.email?`<div style="font-size:11px;color:var(--gray-l);">✉️ ${u.email}</div>`:''}
           </td>
           <td style="padding:9px 10px;">
             <span class="badge-status" style="background:${u.role==='employee'?'#EFF6FF':'#FEF3C7'};color:${u.role==='employee'?'#1D4ED8':'#92400E'}">
@@ -1119,6 +1230,7 @@ function editUser(userId) {
   document.getElementById('usr-uname').value = u.username;
   document.getElementById('usr-pass').value  = '';  // blank = keep existing
   document.getElementById('usr-name').value  = u.name;
+  document.getElementById('usr-email').value = u.email || '';
   document.getElementById('usr-role').value  = u.role;
   document.getElementById('usr-dept').value  = u.dept || '';
   document.getElementById('usr-pos').value   = u.pos  || '';
@@ -1144,7 +1256,7 @@ function cancelEditUser() {
 }
 
 function clearUserForm() {
-  ['usr-uname','usr-pass','usr-name','usr-dept','usr-pos'].forEach(id => {
+  ['usr-uname','usr-pass','usr-name','usr-email','usr-dept','usr-pos'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
@@ -1168,6 +1280,7 @@ async function updateUser() {
   const un = document.getElementById('usr-uname').value.trim();
   const pw = document.getElementById('usr-pass').value.trim();
   const nm = document.getElementById('usr-name').value.trim();
+  const em = document.getElementById('usr-email').value.trim();
   const rl = document.getElementById('usr-role').value;
   const dt = document.getElementById('usr-dept').value.trim();
   const ps = document.getElementById('usr-pos').value.trim();
@@ -1190,6 +1303,7 @@ async function updateUser() {
       username: un,
       password: pw || existing.password, // keep old password if blank
       name: nm,
+      email: em,
       role: rl,
       dept: dt,
       pos:  ps,
@@ -1212,6 +1326,7 @@ async function addUser() {
   const un = document.getElementById('usr-uname').value.trim();
   const pw = document.getElementById('usr-pass').value.trim();
   const nm = document.getElementById('usr-name').value.trim();
+  const em = document.getElementById('usr-email').value.trim();
   const rl = document.getElementById('usr-role').value;
   const dt = document.getElementById('usr-dept').value.trim();
   const ps = document.getElementById('usr-pos').value.trim();
@@ -1222,7 +1337,7 @@ async function addUser() {
   btn.innerHTML = '<span class="spinner"></span> Menyimpan...';
   btn.disabled = true;
   try {
-    const user = { id:'u'+uid(), username:un, password:pw, name:nm, role:rl, dept:dt, pos:ps, createdAt:new Date().toISOString() };
+    const user = { id:'u'+uid(), username:un, password:pw, name:nm, email:em, role:rl, dept:dt, pos:ps, createdAt:new Date().toISOString() };
     const r = await apiPost({ action:'addUser', payload:user });
     if (!r.success) throw new Error(r.error);
     await loadAllData();
