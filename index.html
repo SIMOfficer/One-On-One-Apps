@@ -1166,7 +1166,12 @@ async function addSchedule() {
     document.getElementById('sc-emp').value='';
     document.getElementById('sc-date').value='';
     document.getElementById('sc-notes').value='';
-    toast(r.calendarSynced ? 'Jadwal disimpan & undangan calendar terkirim!' : 'Jadwal berhasil disimpan!', r.calendarSynced ? 'ok' : 'warn');
+    if (r.calendarSynced) {
+      toast('Jadwal disimpan & undangan calendar terkirim!', 'ok');
+    } else {
+      toast('Jadwal disimpan, tapi calendar gagal: ' + (r.calendarError || 'guest email kosong'), 'warn');
+      console.warn('Calendar sync gagal', r);
+    }
   } catch(e) {
     toast('Gagal: '+e.message, 'err');
   }
