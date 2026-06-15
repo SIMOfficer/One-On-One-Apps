@@ -138,6 +138,9 @@ tr.clickable:hover{background:#F9FAFB;cursor:pointer;}
 .pdca-foot{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;}
 .pdca-status-select{padding:6px 10px;border:1.5px solid var(--border);border-radius:var(--r-sm);font-size:12px;font-family:inherit;outline:none;}
 .pdca-note{flex:1;min-width:160px;padding:6px 10px;border:1.5px solid var(--border);border-radius:var(--r-sm);font-size:12px;font-family:inherit;outline:none;resize:vertical;}
+.pdca-input{padding:6px 10px;border:1.5px solid var(--border);border-radius:var(--r-sm);font-size:12px;font-family:inherit;outline:none;}
+.pdca-edit-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;}
+.pdca-desc-edit{width:100%;padding:6px 10px;border:1.5px solid var(--border);border-radius:var(--r-sm);font-size:13px;font-family:inherit;outline:none;resize:vertical;margin-bottom:8px;}
 
 /* ── LOGIN ───────────────── */
 #login-page{min-height:100vh;background:linear-gradient(135deg,#1C1C1C 0%,var(--red) 100%);display:flex;align-items:center;justify-content:center;padding:16px;}
@@ -1023,18 +1026,49 @@ function canEditPdca(iv) {
   return S.user && (isFullAccess() || S.user.id === iv.employeeId);
 }
 
+// Management (CRC/Kacab/Kabeng/ADH) bisa menyempurnakan rencana PICA
+// (type/desc/PIC/due date) hasil rekomendasi AI, atau menambah item baru.
+function canManagePdca(iv) {
+  return S.user && isFullAccess();
+}
+
 function renderPdcaSection(iv) {
   const el = document.getElementById('detail-pdca-section');
   const items = getPdcaItems(iv);
-  if (!items.length) { el.innerHTML = ''; return; }
+  const manage = canManagePdca(iv);
+  const trackOnly = !manage && canEditPdca(iv);
 
-  const editable = canEditPdca(iv);
+  if (!items.length && !manage) { el.innerHTML = ''; return; }
+
   el.innerHTML = `
     <div class="card">
-      <div class="card-title">📋 PDCA Action Plan & Realisasi</div>
-      ${items.map(item => {
+      <div class="card-title">📋 PDCA / PICA Action Plan & Realisasi</div>
+      ${items.length ? items.map(item => {
         const cls = PDCA_TYPES[item.type] || 'plan';
         const [bg, fg] = PDCA_STATUS_COLOR[item.status] || PDCA_STATUS_COLOR.Belum;
+
+        if (manage) {
+          return `
+          <div class="pdca-item">
+            <div class="pdca-edit-row">
+              <select class="pdca-input" id="pdca-type-${item.id}">
+                ${Object.keys(PDCA_TYPES).map(t=>`<option value="${t}" ${item.type===t?'selected':''}>${t}</option>`).join('')}
+              </select>
+              <input type="text" class="pdca-input" id="pdca-pic-${item.id}" placeholder="PIC" value="${item.pic||''}" style="flex:1;min-width:120px">
+              <input type="date" class="pdca-input" id="pdca-due-${item.id}" value="${item.dueDate||''}">
+              <button class="btn btn-secondary btn-sm" onclick="deletePicaItem('${item.id}')">🗑️ Hapus</button>
+            </div>
+            <textarea class="pdca-desc-edit" id="pdca-desc-${item.id}" rows="2" placeholder="Deskripsi rencana (Plan/Do/Check/Act)...">${item.desc||''}</textarea>
+            <div class="pdca-foot">
+              <select class="pdca-status-select" id="pdca-status-${item.id}">
+                ${PDCA_STATUS.map(s=>`<option value="${s}" ${item.status===s?'selected':''}>${s}</option>`).join('')}
+              </select>
+              <textarea class="pdca-note" id="pdca-note-${item.id}" rows="1" placeholder="Catatan realisasi...">${item.realisasi||''}</textarea>
+              <button class="btn btn-primary btn-sm" onclick="saveManagedPicaItem('${item.id}')">Simpan</button>
+            </div>
+          </div>`;
+        }
+
         return `
         <div class="pdca-item">
           <div class="pdca-head">
@@ -1043,7 +1077,7 @@ function renderPdcaSection(iv) {
           </div>
           <div class="pdca-desc">${item.desc || '-'}</div>
           <div class="pdca-meta">${item.pic ? `👤 PIC: ${item.pic}` : ''}${item.dueDate ? ` &nbsp; · &nbsp; 🗓️ Target: ${fdate(item.dueDate)}` : ''}</div>
-          ${editable ? `
+          ${trackOnly ? `
           <div class="pdca-foot">
             <select class="pdca-status-select" id="pdca-status-${item.id}">
               ${PDCA_STATUS.map(s=>`<option value="${s}" ${item.status===s?'selected':''}>${s}</option>`).join('')}
@@ -1052,8 +1086,73 @@ function renderPdcaSection(iv) {
             <button class="btn btn-primary btn-sm" onclick="savePdcaItem('${item.id}')">Simpan</button>
           </div>` : (item.realisasi ? `<div class="pdca-meta"><strong>Realisasi:</strong> ${item.realisasi}</div>` : '')}
         </div>`;
-      }).join('')}
+      }).join('') : `<div style="color:var(--gray-l);font-size:13px;text-align:center;padding:10px 0;">Belum ada item PICA</div>`}
+      ${manage ? `<button class="btn btn-secondary btn-sm" style="margin-top:4px" onclick="addPicaItem()">+ Tambah Item PICA</button>` : ''}
     </div>`;
+}
+
+async function saveManagedPicaItem(itemId) {
+  const iv = S.interviews.find(x=>x.id===S.selIv);
+  if (!iv) return;
+  const type = document.getElementById('pdca-type-'+itemId).value;
+  const desc = document.getElementById('pdca-desc-'+itemId).value.trim();
+  const pic = document.getElementById('pdca-pic-'+itemId).value.trim();
+  const dueDate = document.getElementById('pdca-due-'+itemId).value;
+  const status = document.getElementById('pdca-status-'+itemId).value;
+  const realisasi = document.getElementById('pdca-note-'+itemId).value.trim();
+
+  try {
+    const r = await apiPost({ action:'updatePdcaItem', payload:{ interviewId: iv.id, itemId, type, desc, pic, dueDate, status, realisasi } });
+    if (!r.success) throw new Error(r.error);
+
+    const items = getPdcaItems(iv);
+    const idx = items.findIndex(i=>i.id===itemId);
+    if (idx>=0) Object.assign(items[idx], { type, desc, pic, dueDate, status, realisasi, updatedAt: new Date().toISOString() });
+    iv.pdcaItems = JSON.stringify(items);
+
+    toast('Item PICA berhasil disimpan!', 'ok');
+    renderPdcaSection(iv);
+  } catch(e) {
+    toast('Gagal: ' + e.message, 'err');
+  }
+}
+
+async function addPicaItem() {
+  const iv = S.interviews.find(x=>x.id===S.selIv);
+  if (!iv) return;
+  const item = { id:'p'+uid(), type:'Plan', desc:'', pic:'', dueDate:'', status:'Belum', realisasi:'' };
+
+  try {
+    const r = await apiPost({ action:'addPdcaItem', payload:{ interviewId: iv.id, item } });
+    if (!r.success) throw new Error(r.error);
+
+    const items = getPdcaItems(iv);
+    items.push(item);
+    iv.pdcaItems = JSON.stringify(items);
+
+    renderPdcaSection(iv);
+  } catch(e) {
+    toast('Gagal: ' + e.message, 'err');
+  }
+}
+
+async function deletePicaItem(itemId) {
+  const iv = S.interviews.find(x=>x.id===S.selIv);
+  if (!iv) return;
+  if (!confirm('Hapus item PICA ini?')) return;
+
+  try {
+    const r = await apiPost({ action:'deletePdcaItem', payload:{ interviewId: iv.id, itemId } });
+    if (!r.success) throw new Error(r.error);
+
+    const items = getPdcaItems(iv).filter(i=>i.id!==itemId);
+    iv.pdcaItems = JSON.stringify(items);
+
+    toast('Item PICA dihapus', 'ok');
+    renderPdcaSection(iv);
+  } catch(e) {
+    toast('Gagal: ' + e.message, 'err');
+  }
 }
 
 async function savePdcaItem(itemId) {
