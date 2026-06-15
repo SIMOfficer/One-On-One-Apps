@@ -156,6 +156,24 @@ tr.clickable:hover{background:#F9FAFB;cursor:pointer;}
 .pdca-edit-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;}
 .pdca-desc-edit{width:100%;padding:6px 10px;border:1.5px solid var(--border);border-radius:var(--r-sm);font-size:13px;font-family:inherit;outline:none;resize:vertical;margin-bottom:8px;}
 
+/* ── TRACKING ────────────── */
+.track-order{border:1.5px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:10px;cursor:pointer;transition:transform .15s,box-shadow .15s;background:var(--white);}
+.track-order:hover{transform:translateY(-2px);box-shadow:var(--shadow);}
+.track-order-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:8px;}
+.track-order-title{font-weight:700;font-size:14px;}
+.track-order-sub{font-size:12px;color:var(--gray);}
+.track-timeline{position:relative;padding-left:26px;}
+.track-step{position:relative;padding-bottom:22px;}
+.track-step:last-child{padding-bottom:0;}
+.track-step::before{content:'';position:absolute;left:-26px;top:3px;width:14px;height:14px;border-radius:50%;background:var(--border);border:3px solid var(--white);box-shadow:0 0 0 2px var(--border);}
+.track-step::after{content:'';position:absolute;left:-20px;top:17px;bottom:0;width:2px;background:var(--border);}
+.track-step:last-child::after{display:none;}
+.track-step.done::before{background:#10B981;box-shadow:0 0 0 2px #10B981;}
+.track-step.done::after{background:#10B981;}
+.track-step.pending::before{background:#F59E0B;box-shadow:0 0 0 2px #F59E0B;}
+.track-step-title{font-size:13px;font-weight:700;}
+.track-step-sub{font-size:11px;color:var(--gray);margin-top:2px;}
+
 /* ── LOGIN ───────────────── */
 #login-page{min-height:100vh;background:linear-gradient(135deg,#1C1C1C 0%,var(--red) 100%);display:flex;align-items:center;justify-content:center;padding:16px;}
 .login-card{background:#fff;border-radius:16px;padding:38px;width:100%;max-width:400px;box-shadow:0 30px 70px rgba(0,0,0,.4);}
@@ -338,6 +356,20 @@ tr.clickable:hover{background:#F9FAFB;cursor:pointer;}
       <div id="todo-list"></div>
     </div>
 
+    <!-- TRACKING PROGRESS -->
+    <div id="view-tracking" class="view">
+      <div class="view-header">
+        <div class="flex-between">
+          <div>
+            <button class="btn btn-secondary btn-sm" id="tracking-back" style="display:none;margin-bottom:8px;" onclick="backToTrackingList()">← Daftar Interview</button>
+            <h1 id="tracking-title">Tracking Progress Saya</h1>
+            <p id="tracking-sub">Pantau status tindak lanjut masukan Anda</p>
+          </div>
+        </div>
+      </div>
+      <div id="tracking-body"></div>
+    </div>
+
     <!-- INTERVIEW FORM -->
     <div id="view-form" class="view">
       <div class="flex-row" style="margin-bottom:20px;">
@@ -500,7 +532,7 @@ let APPS_URL = DEFAULT_APPS_URL || localStorage.getItem('dt_apps_url') || '';
 // ── STATE ─────────────────────────────────────────────────
 let S = {
   user: null, users: [], interviews: [], schedules: [],
-  view: 'dashboard', selIv: null, selSc: null,
+  view: 'dashboard', selIv: null, selSc: null, trackIv: null,
   formStep: 0, formAnswers: {}, formSchedule: null,
   loading: false, syncing: false, lastSync: null,
   editingUserId: null,
@@ -691,6 +723,7 @@ function showView(view) {
 function renderCurrentView() {
   switch(S.view) {
     case 'dashboard':   renderDashboard(); break;
+    case 'tracking':    renderTracking(); break;
     case 'todo':        renderTodo(); break;
     case 'interviews':  renderInterviews(); break;
     case 'detail':      renderDetail(); break;
@@ -708,6 +741,7 @@ function renderSidebar() {
   const pendingCount = getPendingSchedules().length;
   const items = [
     { view:'dashboard', icon:'📊', label:'Dashboard' },
+    ...(!isFullAccess() ? [{ view:'tracking', icon:'📦', label:'Tracking Progress Saya' }] : []),
     { view:'todo', icon:'📋', label:'To-Do List', badge: pendingCount },
     ...(canSchedule() ? [{ view:'schedule', icon:'📅', label:'Jadwalkan Interview' }] : []),
     { view: isFullAccess()?'interviews':'interviews', icon:'📝', label: isFullAccess()?'Data Interview':'Interview Saya' },
@@ -721,6 +755,113 @@ function renderSidebar() {
       ${item.badge ? `<span class="badge">${item.badge}</span>` : ''}
     </button>
   `).join('');
+}
+
+// ── TRACKING PROGRESS SAYA ────────────────────────────────
+function renderTracking() {
+  renderSidebar();
+  const ivs = S.interviews.filter(i=>i.employeeId===S.user.id)
+    .sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const body = document.getElementById('tracking-body');
+
+  if (!ivs.length) {
+    document.getElementById('tracking-title').textContent = 'Tracking Progress Saya';
+    document.getElementById('tracking-sub').textContent = 'Pantau status tindak lanjut masukan Anda';
+    document.getElementById('tracking-back').style.display = 'none';
+    body.innerHTML = `<div class="card" style="text-align:center;padding:50px 20px;">
+      <div style="font-size:42px;margin-bottom:10px;">📦</div>
+      <div style="font-size:15px;font-weight:700;margin-bottom:6px;">Belum Ada Interview</div>
+      <div style="font-size:12px;color:var(--gray);">Tracking progress akan muncul setelah Anda menyelesaikan interview One-on-One</div>
+    </div>`;
+    return;
+  }
+
+  let sel = null;
+  if (ivs.length === 1) sel = ivs[0];
+  else if (S.trackIv) sel = ivs.find(i=>i.id===S.trackIv);
+
+  if (!sel) {
+    document.getElementById('tracking-title').textContent = 'Tracking Progress Saya';
+    document.getElementById('tracking-sub').textContent = 'Pilih interview untuk melihat status tindak lanjut';
+    document.getElementById('tracking-back').style.display = 'none';
+    body.innerHTML = ivs.map(iv => {
+      const items = getPdcaItems(iv);
+      let label, bg, fg;
+      if (!items.length) { label='Menunggu Ditindaklanjuti'; bg='#FEF3C7'; fg='#92400E'; }
+      else if (items.every(it=>it.status==='Selesai')) { label='Selesai'; bg='#D1FAE5'; fg='#065F46'; }
+      else { label='Dalam Proses'; bg='#DBEAFE'; fg='#1D4ED8'; }
+      const doneCount = items.filter(it=>it.status==='Selesai').length;
+      return `<div class="track-order" onclick="openTracking('${iv.id}')">
+        <div class="track-order-head">
+          <div class="track-order-title">📅 Interview ${fdate(iv.date)}</div>
+          <span class="badge-status" style="background:${bg};color:${fg}">${label}</span>
+        </div>
+        <div class="track-order-sub">NPS: ${iv.npsScore}/10 ${items.length ? `· ${doneCount}/${items.length} item PICA selesai` : '· Rencana tindak lanjut (PICA) belum dibuat'}</div>
+      </div>`;
+    }).join('');
+    return;
+  }
+
+  document.getElementById('tracking-title').textContent = `Tracking Progress – Interview ${fdate(sel.date)}`;
+  document.getElementById('tracking-sub').textContent = `NPS Score: ${sel.npsScore}/10`;
+  document.getElementById('tracking-back').style.display = ivs.length > 1 ? '' : 'none';
+
+  const items = getPdcaItems(sel);
+  let html = `<div class="card"><div class="track-timeline">`;
+  html += `<div class="track-step done">
+    <div class="track-step-title">✅ Interview Selesai</div>
+    <div class="track-step-sub">${fdate(sel.date)} — Insight & masukan Anda telah tercatat</div>
+  </div>`;
+
+  if (!items.length) {
+    html += `<div class="track-step pending">
+      <div class="track-step-title">⏳ Menunggu Ditindaklanjuti Management</div>
+      <div class="track-step-sub">Management cabang belum menyusun rencana tindak lanjut (PICA) untuk masukan Anda</div>
+    </div>`;
+  } else {
+    const doneCount = items.filter(it=>it.status==='Selesai').length;
+    const allDone = doneCount === items.length;
+    html += `<div class="track-step done">
+      <div class="track-step-title">📋 Rencana Tindak Lanjut (PICA) Dibuat</div>
+      <div class="track-step-sub">Management telah menyusun ${items.length} rencana tindak lanjut</div>
+    </div>`;
+    html += `<div class="track-step ${allDone ? 'done' : 'pending'}">
+      <div class="track-step-title">${allDone ? '🎉 Seluruh Tindak Lanjut Selesai' : '🔧 Tindak Lanjut Dalam Proses'}</div>
+      <div class="track-step-sub">${doneCount}/${items.length} item sudah Selesai</div>
+    </div>`;
+  }
+  html += `</div></div>`;
+
+  if (items.length) {
+    html += `<div class="card" style="margin-top:14px;">
+      <div class="card-title">📋 Detail Rencana & Realisasi</div>
+      ${items.map(item => {
+        const cls = PDCA_TYPES[item.type] || 'plan';
+        const [bg, fg] = PDCA_STATUS_COLOR[item.status] || PDCA_STATUS_COLOR.Belum;
+        return `<div class="pdca-item">
+          <div class="pdca-head">
+            <span class="pdca-tag ${cls}">${item.type || 'Plan'}</span>
+            <span class="badge-status" style="background:${bg};color:${fg}">${item.status || 'Belum'}</span>
+          </div>
+          <div class="pdca-desc">${item.desc || '-'}</div>
+          <div class="pdca-meta">${item.pic ? `👤 PIC: ${item.pic}` : ''}${item.dueDate ? ` &nbsp; · &nbsp; 🗓️ Target: ${fdate(item.dueDate)}` : ''}</div>
+          ${item.realisasi ? `<div class="pdca-meta" style="margin-bottom:0;"><strong>Realisasi:</strong> ${item.realisasi}</div>` : ''}
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+
+  body.innerHTML = html;
+}
+
+function openTracking(ivId) {
+  S.trackIv = ivId;
+  renderTracking();
+}
+
+function backToTrackingList() {
+  S.trackIv = null;
+  renderTracking();
 }
 
 // ── DASHBOARD ─────────────────────────────────────────────
